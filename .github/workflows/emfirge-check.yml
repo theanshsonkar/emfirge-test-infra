@@ -1,0 +1,79 @@
+name: Emfirge Security Check
+
+on:
+  pull_request:
+    paths:
+      - '**/*.tf'
+
+jobs:
+  security-check:
+    runs-on: ubuntu-latest
+    name: Emfirge CI/CD Gate
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Emfirge Security Analysis
+        id: emfirge
+        env:
+          EMFIRGE_API_KEY: ${{ secrets.EMFIRGE_API_KEY }}
+          EMFIRGE_ANALYSIS_ID: ${{ secrets.EMFIRGE_ANALYSIS_ID }}
+        run: |
+          RESPONSE=$(curl -s -X POST "https://emfirge.cloud/api/ci/analyze" \
+            -H "Content-Type: application/json" \
+            -H "X-API-Key: $EMFIRGE_API_KEY" \
+            -d "{
+              \"repo\": \"${{ github.repository }}\",
+              \"pr_number\": ${{ github.event.pull_request.number }},
+              \"base_ref\": \"${{ github.event.pull_request.base.ref }}\",
+              \"head_ref\": \"${{ github.event.pull_request.head.ref }}\",
+              \"analysis_id\": \"$EMFIRGE_ANALYSIS_ID\"
+            }")
+
+          echo "Response: $RESPONSE"
+
+          STATUS=$(echo "$RESPONSE" | jq -r '.status')
+          SUMMARY=$(echo "$RESPONSE" | jq -r '.summary')
+          SCORE_DELTA=$(echo "$RESPONSE" | jq -r '.score_delta')
+          NEW_FINDINGS=$(echo "$RESPONSE" | jq -r '.new_findings | length')
+
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
+          echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
+          echo "score_delta=$SCORE_DELTA" >> $GITHUB_OUTPUT
+          echo "new_findings=$NEW_FINDINGS" >> $GITHUB_OUTPUT
+
+      - name: Comment on PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = '${{ steps.emfirge.outputs.status }}';
+            const summary = '${{ steps.emfirge.outputs.summary }}';
+            const scoreDelta = '${{ steps.emfirge.outputs.score_delta }}';
+            const newFindings = '${{ steps.emfirge.outputs.new_findings }}';
+
+            const icon = status === 'fail' ? '🚨' : status === 'warn' ? '⚠️' : '✅';
+            const body = `## ${icon} Emfirge Security Check
+
+            **Status:** ${status.toUpperCase()}
+            **Score Impact:** ${scoreDelta > 0 ? '+' : ''}${scoreDelta} points
+            **New Findings:** ${newFindings}
+
+            ${summary}
+
+            ---
+            *Powered by [Emfirge](https://emfirge.cloud)*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+      - name: Fail if critical issues found
+        if: steps.emfirge.outputs.status == 'fail'
+        run: |
+          echo "::error::Emfirge detected critical security issues in this PR"
+          exit 1
