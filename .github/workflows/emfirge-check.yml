@@ -23,7 +23,6 @@ jobs:
         id: emfirge
         env:
           EMFIRGE_API_KEY: ${{ secrets.EMFIRGE_API_KEY }}
-          EMFIRGE_ANALYSIS_ID: ${{ secrets.EMFIRGE_ANALYSIS_ID }}
         run: |
           # Skip if secrets not configured
           if [ -z "$EMFIRGE_API_KEY" ]; then
@@ -35,15 +34,14 @@ jobs:
             exit 0
           fi
 
-          RESPONSE=$(curl -s --max-time 10 -X POST "https://emfirge.cloud/api/ci/analyze" \
+          RESPONSE=$(curl -s --max-time 15 -X POST "https://emfirge.cloud/api/ci/analyze" \
             -H "Content-Type: application/json" \
             -H "X-API-Key: $EMFIRGE_API_KEY" \
             -d "{
               \"repo\": \"${{ github.repository }}\",
               \"pr_number\": ${{ github.event.pull_request.number }},
               \"base_ref\": \"${{ github.event.pull_request.base.ref }}\",
-              \"head_ref\": \"${{ github.event.pull_request.head.ref }}\",
-              \"analysis_id\": \"$EMFIRGE_ANALYSIS_ID\"
+              \"head_ref\": \"${{ github.event.pull_request.head.ref }}\"
             }")
 
           echo "Response: $RESPONSE"
