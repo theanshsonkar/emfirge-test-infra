@@ -34,7 +34,7 @@ jobs:
             exit 0
           fi
 
-          RESPONSE=$(curl -s --max-time 15 -X POST "https://emfirge.cloud/api/ci/analyze" \
+          RESPONSE=$(curl -s -L --max-time 15 -X POST "https://emfirge.cloud/api/ci/analyze" \
             -H "Content-Type: application/json" \
             -H "X-API-Key: $EMFIRGE_API_KEY" \
             -d "{
