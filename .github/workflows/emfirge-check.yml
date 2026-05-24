@@ -20,7 +20,17 @@ jobs:
           EMFIRGE_API_KEY: ${{ secrets.EMFIRGE_API_KEY }}
           EMFIRGE_ANALYSIS_ID: ${{ secrets.EMFIRGE_ANALYSIS_ID }}
         run: |
-          RESPONSE=$(curl -s -X POST "https://emfirge.cloud/api/ci/analyze" \
+          # Skip if secrets not configured
+          if [ -z "$EMFIRGE_API_KEY" ]; then
+            echo "::warning::EMFIRGE_API_KEY not configured — skipping security check"
+            echo "status=skip" >> $GITHUB_OUTPUT
+            echo "summary=API key not configured. Set EMFIRGE_API_KEY secret to enable." >> $GITHUB_OUTPUT
+            echo "score_delta=0" >> $GITHUB_OUTPUT
+            echo "new_findings=0" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          RESPONSE=$(curl -s --max-time 10 -X POST "https://emfirge.cloud/api/ci/analyze" \
             -H "Content-Type: application/json" \
             -H "X-API-Key: $EMFIRGE_API_KEY" \
             -d "{
@@ -33,10 +43,20 @@ jobs:
 
           echo "Response: $RESPONSE"
 
-          STATUS=$(echo "$RESPONSE" | jq -r '.status')
-          SUMMARY=$(echo "$RESPONSE" | jq -r '.summary')
-          SCORE_DELTA=$(echo "$RESPONSE" | jq -r '.score_delta')
-          NEW_FINDINGS=$(echo "$RESPONSE" | jq -r '.new_findings | length')
+          # Validate response is JSON
+          if ! echo "$RESPONSE" | jq empty 2>/dev/null; then
+            echo "::warning::Emfirge API returned invalid response — skipping"
+            echo "status=skip" >> $GITHUB_OUTPUT
+            echo "summary=API unreachable or returned invalid response." >> $GITHUB_OUTPUT
+            echo "score_delta=0" >> $GITHUB_OUTPUT
+            echo "new_findings=0" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          STATUS=$(echo "$RESPONSE" | jq -r '.status // "skip"')
+          SUMMARY=$(echo "$RESPONSE" | jq -r '.summary // "No summary"')
+          SCORE_DELTA=$(echo "$RESPONSE" | jq -r '.score_delta // 0')
+          NEW_FINDINGS=$(echo "$RESPONSE" | jq -r '.new_findings | length // 0')
 
           echo "status=$STATUS" >> $GITHUB_OUTPUT
           echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
@@ -77,3 +97,8 @@ jobs:
         run: |
           echo "::error::Emfirge detected critical security issues in this PR"
           exit 1
+
+      - name: Skip notice
+        if: steps.emfirge.outputs.status == 'skip'
+        run: |
+          echo "::notice::Emfirge security check skipped — API not configured or unreachable"
