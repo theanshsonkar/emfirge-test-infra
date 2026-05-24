@@ -1,13 +1,12 @@
 # S3 buckets — matching demo_seed.py resource IDs for end-to-end testing
 
-resource "aws_s3_bucket" "public_assets" # EMFIRGE FIX: Public S3 bucket detected: acme-public-assets — consider adding CloudFront for better security and performance
-resource "aws_s3_bucket_public_access_block" "acme_public_assets" {
+resource "aws_s3_bucket" "public_assets" {
   bucket = "acme-public-assets"
 
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
+  tags = {
+    Name = "acme-public-assets"
+    Env  = "demo"
+  }
 }
 
 resource "aws_s3_bucket_public_access_block" "public_assets_block" {
