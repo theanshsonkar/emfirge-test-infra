@@ -1,30 +1,14 @@
 # Test infrastructure for Emfirge CI/CD gate
 # These resources intentionally have security issues matching demo findings
 
-resource "aws_security_group" "ssh_open" {
-  name        = "ssh-open-sg"
-  description = "SSH open to the world (INTENTIONALLY INSECURE for testing)"
-  vpc_id      = var.vpc_id
-
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "SSH from anywhere"
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name = "ssh-open-sg"
-    Env  = "demo"
-  }
+resource "aws_security_group" "ssh_open" # EMFIRGE FIX: SSH port 22 is open to the entire internet (0.0.0.0/0)
+resource "aws_vpc_security_group_ingress_rule" "restrict_ssh" {
+  security_group_id = "sg-0a1b2c3d4e5f00002"
+  description       = "Restrict SSH to VPC CIDR only"
+  from_port         = 22
+  to_port           = 22
+  ip_protocol       = "tcp"
+  cidr_ipv4         = "10.0.0.0/8"
 }
 
 resource "aws_security_group" "rdp_open" {
