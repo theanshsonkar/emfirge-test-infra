@@ -1,16 +1,16 @@
-# S3 buckets — some intentionally insecure for testing
+# S3 buckets — matching demo_seed.py resource IDs for end-to-end testing
 
-resource "aws_s3_bucket" "public_data" {
-  bucket = "prod-data-bucket"
+resource "aws_s3_bucket" "public_assets" {
+  bucket = "acme-public-assets"
 
   tags = {
-    Name = "prod-data-bucket"
+    Name = "acme-public-assets"
     Env  = "demo"
   }
 }
 
-resource "aws_s3_bucket_public_access_block" "public_data_block" {
-  bucket = aws_s3_bucket.public_data.id
+resource "aws_s3_bucket_public_access_block" "public_assets_block" {
+  bucket = aws_s3_bucket.public_assets.id
 
   # INTENTIONALLY INSECURE — public access allowed
   block_public_acls       = false
@@ -19,17 +19,37 @@ resource "aws_s3_bucket_public_access_block" "public_data_block" {
   restrict_public_buckets = false
 }
 
-resource "aws_s3_bucket" "logs" {
-  bucket = "company-logs-2024"
+resource "aws_s3_bucket" "data_lake" {
+  bucket = "acme-data-lake"
 
   tags = {
-    Name = "company-logs"
+    Name = "acme-data-lake"
     Env  = "demo"
   }
 }
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "logs_encryption" {
-  bucket = aws_s3_bucket.logs.id
+# INTENTIONALLY INSECURE — no encryption, no versioning (matches demo findings)
+
+resource "aws_s3_bucket" "logs" {
+  bucket = "acme-logs"
+
+  tags = {
+    Name = "acme-logs"
+    Env  = "demo"
+  }
+}
+
+resource "aws_s3_bucket" "app_static" {
+  bucket = "acme-app-static"
+
+  tags = {
+    Name = "acme-app-static"
+    Env  = "demo"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "app_static_encryption" {
+  bucket = aws_s3_bucket.app_static.id
 
   rule {
     apply_server_side_encryption_by_default {
@@ -38,8 +58,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "logs_encryption" 
   }
 }
 
-resource "aws_s3_bucket_versioning" "logs_versioning" {
-  bucket = aws_s3_bucket.logs.id
+resource "aws_s3_bucket_versioning" "app_static_versioning" {
+  bucket = aws_s3_bucket.app_static.id
 
   versioning_configuration {
     status = "Enabled"

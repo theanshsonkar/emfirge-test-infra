@@ -78,3 +78,37 @@ resource "aws_security_group" "web" {
     Env  = "demo"
   }
 }
+
+resource "aws_security_group" "legacy_app" {
+  name        = "legacy-app-sg"
+  description = "Internal port 8080 open to internet (INTENTIONALLY INSECURE)"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Internal app port open to internet"
+  }
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTPS"
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "legacy-app-sg"
+    Env  = "demo"
+  }
+}
