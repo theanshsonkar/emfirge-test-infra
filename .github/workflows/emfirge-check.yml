@@ -46,7 +46,8 @@ jobs:
               \"head_ref\": \"${{ github.event.pull_request.head.ref }}\"
             }")
 
-          echo "Response: $RESPONSE"
+          # Debug logging removed — response may contain sensitive infrastructure details
+          # echo "Response: $RESPONSE"
 
           # Validate response is JSON
           if ! echo "$RESPONSE" | jq empty 2>/dev/null; then
