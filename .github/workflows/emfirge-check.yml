@@ -31,10 +31,12 @@ jobs:
             echo "summary=API key not configured. Set EMFIRGE_API_KEY secret to enable." >> $GITHUB_OUTPUT
             echo "score_delta=0" >> $GITHUB_OUTPUT
             echo "new_findings=0" >> $GITHUB_OUTPUT
+            echo "attack_paths=0" >> $GITHUB_OUTPUT
+            echo "toxic_combos=0" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          RESPONSE=$(curl -s -L --max-time 15 -X POST "https://emfirge.cloud/api/ci/analyze" \
+          RESPONSE=$(curl -s -L --max-time 30 -X POST "https://emfirge.cloud/api/ci/analyze" \
             -H "Content-Type: application/json" \
             -H "X-API-Key: $EMFIRGE_API_KEY" \
             -d "{
@@ -53,6 +55,8 @@ jobs:
             echo "summary=API unreachable or returned invalid response." >> $GITHUB_OUTPUT
             echo "score_delta=0" >> $GITHUB_OUTPUT
             echo "new_findings=0" >> $GITHUB_OUTPUT
+            echo "attack_paths=0" >> $GITHUB_OUTPUT
+            echo "toxic_combos=0" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -60,40 +64,131 @@ jobs:
           SUMMARY=$(echo "$RESPONSE" | jq -r '.summary // "No summary"')
           SCORE_DELTA=$(echo "$RESPONSE" | jq -r '.score_delta // 0')
           NEW_FINDINGS=$(echo "$RESPONSE" | jq -r '.new_findings | length // 0')
+          SCAN_AGE=$(echo "$RESPONSE" | jq -r '.scan_age_hours // "unknown"')
+
+          # Extract attack paths and toxic combos
+          ATTACK_PATHS=$(echo "$RESPONSE" | jq -r '[.new_findings[] | select(.attack_path != null)] | length // 0')
+          TOXIC_COMBOS=$(echo "$RESPONSE" | jq -r '.new_toxic_combos | length // 0')
+
+          # Save full response for PR comment
+          echo "$RESPONSE" > /tmp/emfirge_response.json
 
           echo "status=$STATUS" >> $GITHUB_OUTPUT
           echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
           echo "score_delta=$SCORE_DELTA" >> $GITHUB_OUTPUT
           echo "new_findings=$NEW_FINDINGS" >> $GITHUB_OUTPUT
+          echo "attack_paths=$ATTACK_PATHS" >> $GITHUB_OUTPUT
+          echo "toxic_combos=$TOXIC_COMBOS" >> $GITHUB_OUTPUT
+          echo "scan_age=$SCAN_AGE" >> $GITHUB_OUTPUT
 
       - name: Comment on PR
         if: always()
         uses: actions/github-script@v7
         with:
           script: |
+            const fs = require('fs');
             const status = '${{ steps.emfirge.outputs.status }}';
-            const summary = '${{ steps.emfirge.outputs.summary }}';
-            const scoreDelta = '${{ steps.emfirge.outputs.score_delta }}';
-            const newFindings = '${{ steps.emfirge.outputs.new_findings }}';
+            const summary = `${{ steps.emfirge.outputs.summary }}`;
+            const scoreDelta = parseInt('${{ steps.emfirge.outputs.score_delta }}') || 0;
+            const newFindings = parseInt('${{ steps.emfirge.outputs.new_findings }}') || 0;
+            const attackPaths = parseInt('${{ steps.emfirge.outputs.attack_paths }}') || 0;
+            const toxicCombos = parseInt('${{ steps.emfirge.outputs.toxic_combos }}') || 0;
+            const scanAge = '${{ steps.emfirge.outputs.scan_age }}';
 
-            const icon = status === 'fail' ? '🚨' : status === 'warn' ? '⚠️' : '✅';
-            const body = `## ${icon} Emfirge Security Check
+            // Status badge
+            const badge = status === 'fail' ? '🚨 FAIL' : status === 'warn' ? '⚠️ WARN' : status === 'skip' ? '⏭️ SKIP' : '✅ PASS';
+            const scoreIcon = scoreDelta < 0 ? '📉' : scoreDelta > 0 ? '📈' : '➡️';
 
-            **Status:** ${status.toUpperCase()}
-            **Score Impact:** ${scoreDelta > 0 ? '+' : ''}${scoreDelta} points
-            **New Findings:** ${newFindings}
+            let body = `## Emfirge Security Gate — ${badge}\n\n`;
 
-            ${summary}
+            // Summary
+            body += `${summary}\n\n`;
 
-            ---
-            *Powered by [Emfirge](https://emfirge.cloud)*`;
+            // Metrics table (only if not skip)
+            if (status !== 'skip') {
+              body += `| Metric | Value |\n|---|---|\n`;
+              body += `| ${scoreIcon} Score Impact | **${scoreDelta > 0 ? '+' : ''}${scoreDelta}** points |\n`;
+              body += `| 🔍 New Findings | ${newFindings} |\n`;
+              if (attackPaths > 0) {
+                body += `| 🌐 Internet-Reachable | ${attackPaths} new resource(s) |\n`;
+              }
+              if (toxicCombos > 0) {
+                body += `| ☠️ Toxic Combos | ${toxicCombos} new |\n`;
+              }
+              if (scanAge !== 'unknown' && scanAge !== 'null') {
+                body += `| 🕐 Scan Age | ${Math.round(parseFloat(scanAge))}h ago |\n`;
+              }
+              body += '\n';
+            }
 
-            github.rest.issues.createComment({
+            // Findings details (if any)
+            let response = null;
+            try {
+              response = JSON.parse(fs.readFileSync('/tmp/emfirge_response.json', 'utf8'));
+            } catch (e) {}
+
+            if (response && response.new_findings && response.new_findings.length > 0) {
+              body += `### New Findings\n\n`;
+              for (const f of response.new_findings.slice(0, 10)) {
+                const sev = f.severity === 'Critical' ? '🔴' : f.severity === 'Moderate' ? '🟡' : '⚪';
+                const file = f.file_path ? ` \`${f.file_path}\`` : '';
+                const path = f.attack_path ? ' ⚡ _internet-reachable_' : '';
+                body += `- ${sev} **${f.severity}** — ${f.issue}${file}${path}\n`;
+              }
+              if (response.new_findings.length > 10) {
+                body += `\n_...and ${response.new_findings.length - 10} more_\n`;
+              }
+              body += '\n';
+            }
+
+            // Resolved findings (positive feedback)
+            if (response && response.resolved_findings && response.resolved_findings.length > 0) {
+              body += `### ✅ Resolved by This PR\n\n`;
+              for (const f of response.resolved_findings.slice(0, 5)) {
+                body += `- ~~${f.issue}~~\n`;
+              }
+              body += '\n';
+            }
+
+            // How it works
+            body += `---\n`;
+            body += `<details><summary>How does this work?</summary>\n\n`;
+            body += `Emfirge simulates your Terraform changes against your **actual live AWS infrastructure**:\n\n`;
+            body += `1. Parses the PR diff for resource additions/modifications\n`;
+            body += `2. Deep-copies your last scan's infrastructure state\n`;
+            body += `3. Applies the PR changes to the copy\n`;
+            body += `4. Rebuilds the infrastructure graph\n`;
+            body += `5. Runs BFS from internet to detect new attack paths\n`;
+            body += `6. Executes all 58 security rules on the mutated state\n`;
+            body += `7. Diffs findings to show only what THIS PR introduces\n\n`;
+            body += `This is not a static lint — it's a live simulation.\n`;
+            body += `</details>\n\n`;
+            body += `*[Emfirge](https://emfirge.cloud) — infrastructure security for startups*`;
+
+            // Find and update existing comment or create new one
+            const comments = await github.rest.issues.listComments({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: body
             });
+
+            const existing = comments.data.find(c => c.body && c.body.includes('Emfirge Security Gate'));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                comment_id: existing.id,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body,
+              });
+            }
 
       - name: Fail if critical issues found
         if: steps.emfirge.outputs.status == 'fail'
