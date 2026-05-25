@@ -19,12 +19,15 @@ resource "aws_s3_bucket_public_access_block" "public_assets_block" {
   restrict_public_buckets = false
 }
 
-resource "aws_s3_bucket" "data_lake" {
+resource "aws_s3_bucket" "data_lake" # EMFIRGE FIX: S3 buckets without encryption: acme-data-lake
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "acme_data_lake" {
   bucket = "acme-data-lake"
 
-  tags = {
-    Name = "acme-data-lake"
-    Env  = "demo"
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
   }
 }
 
