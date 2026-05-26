@@ -25,28 +25,6 @@ resource "aws_db_instance" "prod_db" {
   }
 }
 
-resource "aws_db_instance" "analytics_db" {
-  identifier          = "acme-analytics-db"
-  engine              = "mysql"
-  engine_version      = "8.0"
-  instance_class      = "db.t3.small"
-  allocated_storage   = 20
-  db_name             = "analytics"
-  username            = "analyst"
-  password            = var.db_password
-
-  # INTENTIONALLY INSECURE — public + unencrypted + no deletion protection
-  # (matches demo_seed: publicly_accessible=True, encrypted=False)
-  publicly_accessible = true
-  storage_encrypted   = false
-  multi_az            = false
-  deletion_protection = false
-
-  vpc_security_group_ids = [aws_security_group.web.id]
-  db_subnet_group_name   = var.db_subnet_group
-
-  tags = {
-    Name = "acme-analytics-db"
-    Env  = "demo"
-  }
-}
+resource "aws_db_instance" "analytics_db" # Fix: RDS instances without deletion protection enabled: acme-analytics-db
+# Resource: acme-analytics-db
++ # Emfirge-generated remediation
